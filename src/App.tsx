@@ -14,6 +14,15 @@ const stringToColor = (str: string) => {
   return `hsl(${h}, 80%, 65%)`;
 };
 
+const getDaysWord = (days: number) => {
+  const lastDigit = days % 10;
+  const lastTwoDigits = days % 100;
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return 'дней';
+  if (lastDigit === 1) return 'день';
+  if (lastDigit >= 2 && lastDigit <= 4) return 'дня';
+  return 'дней';
+};
+
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<CsvRow[]>([]);
@@ -74,10 +83,22 @@ function App() {
           setData(parsedData);
           setStep('config');
           
-          // Auto-select first available filter options
-          const availableRegions = Array.from(new Set(parsedData.map(item => item['Регион']))).filter(Boolean).sort();
+          // Auto-select region with highest demand
+          const availableRegions = Array.from(new Set(parsedData.map(item => item['Регион']))).filter(Boolean);
           if (availableRegions.length > 0) {
-            setRegion(availableRegions[0]);
+            const regionDemand = new Map<string, number>();
+            parsedData.forEach(item => {
+              const r = item['Регион'];
+              if (r) {
+                const avgSalesStr = String(item['Общее среднее кол-во заказов, шт'] || '0').replace(/\s/g, '');
+                const avgSales = parseFloat(avgSalesStr.replace(',', '.')) || 0;
+                regionDemand.set(r, (regionDemand.get(r) || 0) + avgSales);
+              }
+            });
+            
+            const bestRegion = availableRegions.sort((a, b) => (regionDemand.get(b) || 0) - (regionDemand.get(a) || 0))[0];
+            
+            setRegion(bestRegion);
             setWarehouse('all');
           }
           
@@ -414,6 +435,21 @@ function App() {
                 onChange={(e) => setDays(e.target.value ? parseInt(e.target.value, 10) : '')}
                 className={inputClasses}
               />
+              <div className="flex flex-wrap gap-2 mt-3">
+                {[7, 14, 30, 60, 90].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setDays(d)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+                      days === d
+                        ? 'bg-accent-primary/20 border-accent-primary text-accent-primary-light'
+                        : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                    }`}
+                  >
+                    {d} {getDaysWord(d)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           
@@ -447,7 +483,23 @@ function App() {
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
               </button>
-              <h2 className="text-[1.5rem] font-semibold text-slate-100 m-0">План поставок</h2>
+              <div className="flex flex-col">
+                <h2 className="text-[1.5rem] font-semibold text-slate-100 m-0 leading-tight">План поставок</h2>
+                <div className="text-[0.85rem] text-slate-400 font-medium flex items-center gap-2 mt-0.5">
+                  <span>Расчет на {days} {getDaysWord(days)}</span>
+                  {warehouse && warehouse !== 'all' ? (
+                    <>
+                      <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
+                      <span>{warehouse}</span>
+                    </>
+                  ) : region ? (
+                    <>
+                      <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
+                      <span>Все склады ({region})</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
@@ -602,7 +654,22 @@ function App() {
                   onChange={(e) => setAdjustDays(e.target.value ? parseInt(e.target.value, 10) : '')}
                   className={inputClasses}
                 />
-                <p className="text-xs text-slate-500 mt-2">Изменит базовый расчет для всех товаров (кроме измененных вручную).</p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {[7, 14, 30, 60, 90].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setAdjustDays(d)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+                        adjustDays === d
+                          ? 'bg-accent-primary/20 border-accent-primary text-accent-primary-light'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                      }`}
+                    >
+                      {d} {getDaysWord(d)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500 mt-3">Изменит базовый расчет для всех товаров (кроме измененных вручную).</p>
               </div>
               
               <div>
