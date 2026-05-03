@@ -1,5 +1,5 @@
-import { Package, LogOut, Calendar, Download } from 'lucide-react';
-import { useMemo } from 'react';
+import { Package, LogOut, Download } from 'lucide-react';
+
 
 interface HeaderProps {
   fileName?: string | null;
@@ -8,15 +8,7 @@ interface HeaderProps {
   totalToSupply?: number;
 }
 
-export function Header({ fileName, rowsCount, onReset, totalToSupply }: HeaderProps) {
-  const currentDate = useMemo(() => {
-    return new Intl.DateTimeFormat('ru-RU', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
-    }).format(new Date());
-  }, []);
-
+export function Header({ fileName, onReset, totalToSupply }: HeaderProps) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0f]/80 backdrop-blur-xl border-b border-white/10 px-4 md:px-8 h-16 flex items-center justify-between transition-all">
       <div className="flex items-center gap-3">

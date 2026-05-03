@@ -696,7 +696,7 @@ function App() {
               </button>
               <button 
                 onClick={() => {
-                  let targetDays = days;
+                  let targetDays = days as number;
                   const daysChanged = adjustDays && typeof adjustDays === 'number' && adjustDays !== days;
                   
                   if (daysChanged) {
