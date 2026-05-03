@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import Papa from 'papaparse';
-import { Package, FileText, Check, Zap, Eye, Inbox, Download, Settings2 } from 'lucide-react';
+import { Package, FileText, Check, Zap, Eye, Inbox, Download, Settings2, Info, FileQuestion } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { CsvRow, ProcessedItem } from './types';
 import { Header } from './components/Header';
@@ -23,6 +23,40 @@ const getDaysWord = (days: number) => {
   return 'дней';
 };
 
+/**
+ * АЛГОРИТМ РАСЧЕТА ПОСТАВОК (Stock Flow)
+ * 
+ * Шаг 1. Фильтрация данных
+ * Отбираем строки из CSV-файла, которые соответствуют выбранному пользователем "Региону" 
+ * и "Складу отгрузки" (или берем все склады региона, если выбран пункт "Все склады").
+ * 
+ * Шаг 2. Группировка
+ * Так как один товар (один артикул и размер) может лежать на разных складах в рамках региона, 
+ * мы группируем данные по уникальной связке "Артикул + Размер".
+ * При группировке суммируем:
+ * - Среднее количество заказов в день (avgSales)
+ * - Текущий остаток (currentStock)
+ * 
+ * Шаг 3. Расчет оборачиваемости
+ * Если выбран конкретный склад, берем значение оборачиваемости из файла.
+ * Если выбраны "Все склады", высчитываем динамически: Текущий остаток / Средние продажи в день.
+ * 
+ * Шаг 4. Базовый расчет потребности к поставке (Формула)
+ * Считаем, сколько штук нужно привезти на заданное количество дней:
+ * Потребность = (Средние продажи в день * Количество дней поставки) - Текущий остаток.
+ * Если число получается отрицательным (то есть остатков хватает), берем 0.
+ * Итоговое значение округляем до ближайшего целого (Math.round).
+ * 
+ * Шаг 5. Учет ручных и массовых корректировок
+ * Если пользователь вводил значение вручную в ячейку "К ПОСТАВКЕ" или применял 
+ * массовую корректировку (коэффициент умножения) через настройки, приоритетно 
+ * используется это скорректированное значение.
+ * 
+ * Шаг 6. Фильтрация отображения и сортировка
+ * Исключаем из списка товары, у которых значение "К поставке" <= 0 (если не включен 
+ * тумблер "Показать товары с достаточным остатком").
+ * В конце сортируем список по артикулу и размеру.
+ */
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<CsvRow[]>([]);
@@ -43,6 +77,10 @@ function App() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustDays, setAdjustDays] = useState<number | ''>('');
   const [adjustMultiplier, setAdjustMultiplier] = useState<string>('1');
+  
+  // Info Modal State
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   
   // Available filter options based on uploaded data
   const regions = useMemo(() => Array.from(new Set(data.map(item => item['Регион']))).filter(Boolean).sort(), [data]);
@@ -358,9 +396,25 @@ function App() {
                 Stock Flow
               </h2>
             </div>
-            <p className="text-slate-400 text-lg md:text-xl font-light">
+            <p className="text-slate-400 text-lg md:text-xl font-light mb-6">
               Интеллектуальный расчет поставок на маркетплейс
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => setShowInfoModal(true)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition-all font-medium"
+              >
+                <Info className="w-5 h-5" />
+                Как работает расчет?
+              </button>
+              <button
+                onClick={() => setShowGuideModal(true)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition-all font-medium"
+              >
+                <FileQuestion className="w-5 h-5" />
+                Как загрузить отчет?
+              </button>
+            </div>
           </div>
         )}
 
@@ -729,6 +783,147 @@ function App() {
                 className="px-5 py-2.5 bg-accent-primary text-white rounded-xl font-medium hover:bg-accent-secondary transition-colors"
               >
                 Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Info Modal */}
+      {showInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-[#13131a] border border-border-light rounded-[20px] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 md:p-8 pb-4 border-b border-border-light/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent-primary/20 rounded-xl">
+                  <Info className="w-6 h-6 text-accent-primary" />
+                </div>
+                <h3 className="text-xl md:text-2xl font-semibold text-white">Как работает алгоритм?</h3>
+              </div>
+              <button 
+                onClick={() => setShowInfoModal(false)}
+                className="text-slate-400 hover:text-white transition-colors p-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 md:p-8 pt-4 space-y-6 text-slate-300 text-[0.95rem] leading-relaxed overflow-y-auto scrollbar-hide">
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">1</span>
+                  Подготовка данных
+                </h4>
+                <p>Система фильтрует ваш отчет по выбранному региону и складу. Если вы выбрали "Все склады", данные объединяются, а остатки и продажи суммируются по каждому уникальному товару (Артикул + Размер).</p>
+              </div>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">2</span>
+                  Оборачиваемость
+                </h4>
+                <p>Если выбран конкретный склад, берется значение оборачиваемости из файла отчета. При выборе пункта "Все склады", алгоритм пересчитывает этот показатель: текущий остаток делится на средние продажи.</p>
+              </div>
+
+              <div className="p-4 bg-accent-primary/5 rounded-xl border border-accent-primary/20">
+                <h4 className="text-accent-primary-light font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary text-white text-sm font-bold">3</span>
+                  Формула расчета потребности
+                </h4>
+                <div className="bg-black/30 p-3 rounded-lg font-mono text-sm text-center border border-white/10 mb-2">
+                  (Средние продажи в день × Дни поставки) − Текущий остаток
+                </div>
+                <p>Это базовый расчет. Если результат получается отрицательным (остатков хватает на заданный период), программа автоматически ставит "0" к поставке.</p>
+              </div>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">4</span>
+                  Корректировки
+                </h4>
+                <p>Вы можете менять количество к поставке вручную прямо в таблице (такие ячейки подсветятся оранжевым) или использовать кнопку "Корректировка" для массового умножения всех значений на нужный коэффициент (например, на 1.2 для запаса в 20%).</p>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 pt-4 border-t border-border-light/50 flex justify-end shrink-0">
+              <button 
+                onClick={() => setShowInfoModal(false)}
+                className="px-6 py-2.5 bg-accent-primary text-white rounded-xl font-medium hover:bg-accent-secondary transition-colors"
+              >
+                Понятно
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guide Modal */}
+      {showGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-[#13131a] border border-border-light rounded-[20px] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 md:p-8 pb-4 border-b border-border-light/50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent-primary/20 rounded-xl">
+                  <FileQuestion className="w-6 h-6 text-accent-primary" />
+                </div>
+                <h3 className="text-xl md:text-2xl font-semibold text-white">Инструкция по выгрузке отчета</h3>
+              </div>
+              <button 
+                onClick={() => setShowGuideModal(false)}
+                className="text-slate-400 hover:text-white transition-colors p-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 md:p-8 pt-4 space-y-6 text-slate-300 text-[0.95rem] leading-relaxed overflow-y-auto scrollbar-hide">
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">1</span>
+                  Зайдите в Аналитику Wildberries
+                </h4>
+                <p>Перейдите на портал продавца Wildberries в раздел <strong>«Аналитика продавца»</strong> → <strong>«История остатков»</strong>.</p>
+              </div>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">2</span>
+                  Выберите интервал
+                </h4>
+                <p>Задайте необходимый период времени. Чем больше период, тем точнее статистика (рекомендуется выбирать <strong>за квартал</strong>).</p>
+              </div>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">3</span>
+                  Скачайте отчет
+                </h4>
+                <p>Прокрутите в самый низ страницы, нажмите <strong>«Создать Excel»</strong> и затем скачайте сформированный файл.</p>
+              </div>
+
+              <div className="p-4 bg-accent-primary/5 rounded-xl border border-accent-primary/20">
+                <h4 className="text-accent-primary-light font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary text-white text-sm font-bold">4</span>
+                  Подготовьте файл (ВАЖНО!)
+                </h4>
+                <p>Откройте скачанный Excel-файл. В нем будет несколько листов. Найдите лист <strong>«Детальная информация»</strong> и перетащите его на <strong>первое место</strong> в книге Excel. Без этого программа не сможет прочитать данные!</p>
+              </div>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary text-sm font-bold">5</span>
+                  Сохраните в формате CSV
+                </h4>
+                <p>Сохраните измененную таблицу (сохранить как...) в формате <strong>CSV (разделители - запятые)</strong>. После этого просто загрузите получившийся файл в эту программу.</p>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 pt-4 border-t border-border-light/50 flex justify-end shrink-0">
+              <button 
+                onClick={() => setShowGuideModal(false)}
+                className="px-6 py-2.5 bg-accent-primary text-white rounded-xl font-medium hover:bg-accent-secondary transition-colors"
+              >
+                Понятно
               </button>
             </div>
           </div>
