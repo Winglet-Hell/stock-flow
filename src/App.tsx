@@ -67,7 +67,10 @@ function App() {
   // Form State
   const [region, setRegion] = useState('');
   const [warehouse, setWarehouse] = useState('');
-  const [days, setDays] = useState<number | ''>('');
+  const [days, setDays] = useState<number | ''>(() => {
+    const saved = localStorage.getItem('stockFlowDays');
+    return saved ? parseInt(saved, 10) : 30;
+  });
   
   // UI State
   const [showSufficientStock, setShowSufficientStock] = useState(false);
@@ -176,7 +179,6 @@ function App() {
     setData([]);
     setRegion('');
     setWarehouse('');
-    setDays('');
     setManualOverrides({});
     setStep('upload');
   };
@@ -291,51 +293,12 @@ function App() {
     return processedData.reduce((sum, item) => sum + item.toSupply, 0);
   }, [processedData]);
 
-  // Set default days based on average turnover
+  // Save days to localStorage when it changes
   useEffect(() => {
-    if (region && warehouse && data.length > 0) {
-      const filtered = data.filter(item => item['Регион'] === region && (warehouse === 'all' ? true : item['Склад'] === warehouse));
-      
-      let sum = 0;
-      let count = 0;
-      
-      filtered.forEach(item => {
-        const turnoverStr = item['Оборачиваемость текущих остатков'];
-        if (turnoverStr && !turnoverStr.includes('>')) {
-          const daysMatch = turnoverStr.match(/(\d+)\s*д/);
-          const hoursMatch = turnoverStr.match(/(\d+)\s*ч/);
-          
-          let itemDays = 0;
-          let hasVal = false;
-          
-          if (daysMatch) {
-            itemDays += parseInt(daysMatch[1], 10);
-            hasVal = true;
-          }
-          if (hoursMatch) {
-            itemDays += parseInt(hoursMatch[1], 10) / 24;
-            hasVal = true;
-          }
-          
-          if (!hasVal && /^\d+$/.test(turnoverStr.trim())) {
-            itemDays += parseInt(turnoverStr.trim(), 10);
-            hasVal = true;
-          }
-          
-          if (hasVal) {
-            sum += itemDays;
-            count++;
-          }
-        }
-      });
-      
-      if (count > 0) {
-        setDays(Math.round(sum / count));
-      } else {
-        setDays('');
-      }
+    if (typeof days === 'number') {
+      localStorage.setItem('stockFlowDays', days.toString());
     }
-  }, [region, warehouse, data]);
+  }, [days]);
 
   const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRegion = e.target.value;
